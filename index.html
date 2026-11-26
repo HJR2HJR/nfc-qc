@@ -88,7 +88,7 @@ dialog .btns{display:flex;gap:8px;margin-top:14px}dialog .btns button{flex:1}
     <div class="actions" id="stageActions"></div>
     <button class="primary" id="startNfc" style="width:100%;margin-top:12px" hidden>开始扫描（打开 NFC）</button>
     <div class="notice" id="notice" hidden></div>
-    <details style="margin-top:12px;text-align:left"><summary>读不到时手动输入</summary><div style="display:flex;gap:8px;margin-top:8px"><input id="manual" style="flex:1;min-width:0;height:42px;border:1px solid var(--line);border-radius:10px;padding:0 10px" placeholder="粘贴链接"><button id="manualAdd">添加</button></div></details>
+    <details style="margin-top:12px;text-align:left"><summary>更多：手动输入 / 旧格式导出</summary><button class="small" id="exportLegacy" style="margin-top:8px;width:100%">按旧格式导出两个文件（二维码、NFC 分开）</button><div style="display:flex;gap:8px;margin-top:8px"><input id="manual" style="flex:1;min-width:0;height:42px;border:1px solid var(--line);border-radius:10px;padding:0 10px" placeholder="粘贴链接"><button id="manualAdd">添加</button></div></details>
   </section>
 
   <section class="card" id="setAsideCard" hidden><h2>拎出去待处理 <span id="setAsideCount"></span></h2><p class="hint" style="margin:-6px 0 8px">线下处理好后，重新扫这一组 / 这一个即可，会排在后面计入</p><div class="list" id="setAsideList"></div></section>
@@ -232,11 +232,17 @@ function qrCsv(links){
   const cell=link=>/[",\n]/.test(link)?`"${link.replace(/"/g,'""')}"`:link;
   return "﻿序号,二维码地址,扫码时间\r\n"+links.map((link,i)=>`${i+1},${cell(link)},${fmt(base+i*1000)}`).join("\r\n")+"\r\n";
 }
-async function exportFiles(){
+async function exportFiles(legacy=false){
   const items=state.groups.flatMap(group=>group.items);
   if(!items.length&&!state.setAside.length){await ask({title:"还没有可导出的",text:"还没有通过核对的记录"});return}
   const stamp=new Date().toISOString().slice(0,16).replace(/[-:T]/g,"").replace(/^(\d{8})/,"$1-"),name=(state.session.label||"质检").replace(/[\\/:*?"<>|]/g,"-");
-  const files=[new File([qrCsv(items.map(item=>item.qr))],`${name}-二维码-${items.length}张-${stamp}.csv`,{type:"text/csv"}),new File([csv(items.map(item=>item.nfc))],`${name}-NFC-${items.length}张-${stamp}.csv`,{type:"text/csv"})];
+  // 默认只导出一个“质检文件”（NFC、二维码同一行），在运营台任一文件框导入即可同时填好两边；旧的两个文件格式放在“更多”里。
+  let group=0;const rows=state.groups.flatMap(g=>{group++;return g.items.map(item=>[group,item.nfc,item.qr])});
+  const cell=value=>/[",\n]/.test(String(value))?`"${String(value).replace(/"/g,'""')}"`:String(value);
+  const combined="﻿序号,组,NFC链接,二维码链接\r\n"+rows.map((row,i)=>[i+1,...row].map(cell).join(",")).join("\r\n")+"\r\n";
+  const files=legacy
+    ?[new File([qrCsv(items.map(item=>item.qr))],`${name}-二维码-${items.length}张-${stamp}.csv`,{type:"text/csv"}),new File([csv(items.map(item=>item.nfc))],`${name}-NFC-${items.length}张-${stamp}.csv`,{type:"text/csv"})]
+    :[new File([combined],`${name}-质检文件-${items.length}张-${stamp}.csv`,{type:"text/csv"})];
   const pending=state.setAside.filter(item=>!item.resolved);
   if(pending.length){const head="﻿时间,张数,原因,NFC,二维码\r\n",body=pending.map(item=>[item.time,item.count,item.reason,item.nfcs.join(" "),item.qrs.join(" ")].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",")).join("\r\n");files.push(new File([head+body+"\r\n"],`${name}-待处理-${pending.length}项-${stamp}.csv`,{type:"text/csv"}))}
   try{if(navigator.canShare&&navigator.canShare({files})){await navigator.share({files,title:`${name} 质检文件`});markExported();return}}catch(error){if(error.name==="AbortError")return}
@@ -302,7 +308,7 @@ $("torch").onclick=toggleTorch;$("restartCam").onclick=()=>{stopCamera();startCa
 $("manualAdd").onclick=()=>{const v=$("manual").value.trim();if(!v)return;$("manual").value="";state.phase==="qr"?onQr(v):onNfc(v)};
 $("undo").onclick=async()=>{const last=state.groups.at(-1);if(!last)return;if(await ask({title:"撤销上一组",text:`撤销最后通过的 ${last.items.length} 张？撤销后需要重新扫这一组`}))
   {state.groups.pop();state.fullNotified=false;if(state.exportedCount>passed())state.exportedCount=passed();save();render()}};
-$("export").onclick=exportFiles;
+$("export").onclick=()=>exportFiles();$("exportLegacy").onclick=()=>exportFiles(true);
 $("finish").onclick=async()=>{
   const unexported=passed()-state.exportedCount;
   if(unexported>0){if(!(await ask({title:"还有没导出的",text:`有 ${unexported} 张通过的记录还没导出，换载体会清空它们。先导出吗？`,okText:"先导出"})))return;await exportFiles();if(passed()>state.exportedCount)return}
