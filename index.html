@@ -153,7 +153,10 @@ function checkGroup(nfcs,qrs){
 }
 
 // ---------- 读入 ----------
+// 卡贴着不动时手机会连续读到同一张：同一链接 2 秒内只算一次（连在一起的卡每张编码不同，不受影响）。
+let lastNfc="",lastNfcAt=0;
 function onNfc(link){
+  const t=Date.now();if(link===lastNfc&&t-lastNfcAt<2000){lastNfcAt=t;return}lastNfc=link;lastNfcAt=t;
   if(!state.session||state.check)return;
   if(state.phase!=="nfc"){flashStage("warn");setHint("现在是扫二维码阶段，NFC 没有记录");return}
   state.current.nfcs.push(link);save();beep(Boolean(codeOf(link)));
@@ -196,6 +199,8 @@ function rescanAll(){state.current={nfcs:[],qrs:[]};state.check=null;state.phase
 // ---------- NFC / 相机 ----------
 async function startNfc(){
   if(!("NDEFReader" in window)){showNotice("这个浏览器不能读 NFC。请用安卓手机的 Chrome 打开。");return}
+  // 整个页面只开一个读卡器：重复新建会让一次贴卡触发多次读取。
+  if(reader){showNotice("");render();return}
   try{reader=new NDEFReader();await reader.scan();
     reader.onreading=event=>{let link="";for(const record of event.message.records){try{const text=new TextDecoder(record.encoding||"utf-8").decode(record.data);if(text.includes("://")||!link)link=text.trim()}catch{}}onNfc(link)};
     reader.onreadingerror=()=>{flashStage("bad");setHint("NFC 读取失败，请贴稳一点再试")};
