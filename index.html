@@ -61,6 +61,20 @@ dialog{border:0;border-radius:14px;padding:18px;width:min(440px,calc(100vw - 32p
 dialog h3{margin:0 0 10px}dialog p{margin:0 0 10px;color:var(--muted);font-size:15px}
 dialog input{width:100%;height:44px;border:1px solid var(--line);border-radius:10px;padding:0 10px;font-size:16px}
 dialog .btns{display:flex;gap:8px;margin-top:14px}dialog .btns button{flex:1}
+.pick{margin-bottom:12px}.pick>span{display:block;font-size:14px;color:var(--muted);margin-bottom:6px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}.chips button{height:38px;padding:0 12px;font-size:15px;border-radius:99px}.chips button.on{border:2px solid var(--primary);color:var(--primary);font-weight:700;background:#eef3ff}
+.picked{margin:4px 0 14px;font-size:15px;color:var(--muted)}.picked b{color:var(--text);font-size:17px}
+.dots{display:grid!important;grid-template-columns:repeat(var(--cols,10),minmax(0,30px));justify-content:center;gap:5px}
+.dots span{width:auto!important;aspect-ratio:1;height:auto!important;display:flex;align-items:center;justify-content:center}
+.dots span.f{background:var(--warnbg)!important;color:var(--warn)!important}
+.chip{display:inline-block;height:32px;padding:0 14px;font-size:14px;border-radius:99px;margin-top:8px;color:var(--primary);border-color:#cddcff;background:#f5f8ff}
+.done-group{padding:10px 0;border-bottom:1px solid var(--line)}.done-group:last-child{border-bottom:0}
+.done-head{display:flex;align-items:baseline;gap:10px}.done-head span{font-size:12px;color:var(--muted)}
+ol.codes{margin:6px 0 0;padding-left:34px;font:13px/1.7 ui-monospace,Consolas,monospace;color:#344054}
+ol.codes em{font:12px system-ui,sans-serif;color:var(--warn);font-style:normal}
+.aside{border:1px solid #f3d9b1;background:#fffaf2;border-radius:12px;padding:10px 12px;margin-top:8px}.aside.done{border-color:var(--line);background:#f8faf9;opacity:.75}
+.aside-head{display:flex;align-items:center;gap:6px}.aside-head b{flex:1;font-size:15px}.aside-count{font-size:13px;color:var(--muted)}
+.aside .aside-remove{margin-top:8px;width:100%}
 </style>
 </head>
 <body>
@@ -72,9 +86,11 @@ dialog .btns{display:flex;gap:8px;margin-top:14px}dialog .btns button{flex:1}
   <!-- 开始：选载体 -->
   <section class="card" id="setup">
     <h2>开始一种载体的质检</h2>
-    <label class="field">载体名称（导出文件会用这个名字）<input id="label" placeholder="如：英-白卡、英-黑立牌"></label>
-    <div class="kinds"><button id="kindCard" class="on">卡片<small>一组一组：先 NFC 后二维码</small></button><button id="kindStand">立牌<small>一个一个：NFC 后马上扫二维码</small></button></div>
-    <label class="field" id="groupField">默认每组张数（每组可在扫描时单独改；填了计划总数，最后一组自动取剩下的数）<input id="groupSize" type="number" inputmode="numeric" min="1" value="10"></label>
+    <div class="pick"><span>平台</span><div class="chips" id="pickPlatform"></div></div>
+    <div class="pick"><span>语言</span><div class="chips" id="pickLanguage"></div></div>
+    <div class="pick"><span>载体</span><div class="chips" id="pickCarrier"></div></div>
+    <p class="picked" id="picked"></p>
+    <label class="field" id="groupField">默认每组张数（扫描时每组可单独改；填了计划总数，最后一组自动取剩下的数）<input id="groupSize" type="number" inputmode="numeric" min="1" value="10"></label>
     <label class="field">计划总数（扫满会提醒导出，可留空）<input id="planned" type="number" inputmode="numeric" min="1" placeholder="如：200"></label>
     <button class="primary" id="begin" style="width:100%">开始</button>
   </section>
@@ -85,13 +101,13 @@ dialog .btns{display:flex;gap:8px;margin-top:14px}dialog .btns button{flex:1}
     <div class="big" id="title"></div>
     <div class="hint" id="hint"></div>
     <div class="dots" id="dots"></div>
+    <button class="chip" id="groupChip" hidden></button>
     <video id="video" playsinline muted hidden></video>
     <div class="camtools" id="camtools" hidden><button class="small" id="torch">手电筒</button><button class="small" id="restartCam">重开相机</button></div>
     <div id="result"></div>
     <div class="actions" id="stageActions"></div>
     <button class="primary" id="startNfc" style="width:100%;margin-top:12px" hidden>开始扫描（打开 NFC）</button>
     <div class="notice" id="notice" hidden></div>
-    <details style="margin-top:12px;text-align:left"><summary>更多：手动输入 / 旧格式导出</summary><button class="small" id="exportLegacy" style="margin-top:8px;width:100%">按旧格式导出两个文件（二维码、NFC 分开）</button><div style="display:flex;gap:8px;margin-top:8px"><input id="manual" style="flex:1;min-width:0;height:42px;border:1px solid var(--line);border-radius:10px;padding:0 10px" placeholder="粘贴链接"><button id="manualAdd">添加</button></div></details>
   </section>
 
   <section class="card" id="setAsideCard" hidden><h2>拎出去待处理 <span id="setAsideCount"></span></h2><p class="hint" style="margin:-6px 0 8px">线下处理好后，重新扫这一组 / 这一个即可，会排在后面计入</p><div class="list" id="setAsideList"></div></section>
@@ -106,6 +122,11 @@ dialog .btns{display:flex;gap:8px;margin-top:14px}dialog .btns button{flex:1}
 // 每次变动都立即存到本机（localStorage），刷新或误关后重新打开会接着上次的进度。
 const KEY="nfc-qc-v1",PREFIX="https://review.hotlabel.co/PublicBinding/Bind?code=",UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const $=id=>document.getElementById(id);
+// 平台、语言、载体与运营台一致；载体名同运营台用途文字（如“英-黑卡”“TikTok 英-彩卡”），导出文件带上这三项，运营台可直接按文件分到对应载体。
+const PLATFORMS=["Google","Instagram","Facebook","TikTok","YouTube"],LANGUAGES=["英文","德文"],CARRIERS=["黑卡","白卡","彩卡","黑立牌","白立牌","共享黑立牌","共享白立牌"];
+const FAIL_NFC="#NFC失效",FAIL_QR="#二维码失效",isFail=value=>value===FAIL_NFC||value===FAIL_QR;
+const carrierLabel=(platform,language,carrier)=>`${platform==="Google"?"":platform+" "}${language==="德文"?"德":"英"}-${carrier}`;
+let pick={platform:"Google",language:"英文",carrier:"黑卡"};
 const fresh=()=>({session:null,groups:[],current:{nfcs:[],qrs:[]},phase:"nfc",check:null,setAside:[],exportedCount:0,fullNotified:false});
 let state=fresh(),reader=null,stream=null,detector=null,scanning=false,lastQr="",lastQrAt=0,wake=null,torchOn=false;
 try{const saved=JSON.parse(localStorage.getItem(KEY)||"null");if(saved&&saved.session)state={...fresh(),...saved}}catch{}
@@ -113,9 +134,10 @@ const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(state))}catch(error)
 try{navigator.storage?.persist?.()}catch{}
 
 const codeOf=link=>{const text=String(link||"").trim();return text.startsWith(PREFIX)&&UUID.test(text.slice(PREFIX.length))?text.slice(PREFIX.length).toLowerCase():""};
-const shortLink=link=>{const code=codeOf(link);return code?`${code.slice(0,8)}…${code.slice(-4)}`:(String(link||"").slice(0,28)||"（空）")};
+const shortLink=link=>{if(link===FAIL_NFC)return"NFC 失效";if(link===FAIL_QR)return"二维码失效";const code=codeOf(link);return code?`${code.slice(0,8)}…${code.slice(-4)}`:(String(link||"").slice(0,28)||"（空）")};
+const itemCode=item=>codeOf(item.nfc)||codeOf(item.qr);
 const passed=()=>state.groups.reduce((n,group)=>n+group.items.length,0);
-const known=()=>{const set=new Set();for(const group of state.groups)for(const item of group.items)set.add(codeOf(item.nfc));return set};
+const known=()=>{const set=new Set();for(const group of state.groups)for(const item of group.items){const code=itemCode(item);if(code)set.add(code)}return set};
 const now=()=>new Date().toLocaleString("zh-CN",{hour12:false});
 const isCard=()=>state.session?.kind==="card";
 /** 本组张数：手动改过的优先；否则默认张数，填了计划总数时不超过剩余张数（如 201 张：20 组 10 张 + 最后 1 组 1 张）。 */
@@ -138,15 +160,16 @@ function checkGroup(nfcs,qrs){
   const problems=[],rows=[],seen=known(),inGroup=new Set();
   const len=Math.max(nfcs.length,qrs.length);
   for(let i=0;i<len;i++){
-    const nfc=nfcs[i]||"",qr=qrs[i]||"",issues=[];
+    const nfc=nfcs[i]||"",qr=qrs[i]||"",issues=[],notes=[];
     if(!nfc)issues.push("缺 NFC");if(!qr)issues.push("缺二维码");
-    if(nfc&&!codeOf(nfc))issues.push("NFC 链接格式不对");if(qr&&!codeOf(qr))issues.push("二维码链接格式不对");
-    if(nfc&&qr&&nfc!==qr)issues.push("NFC 与二维码不一致");
-    const code=codeOf(nfc);if(code&&seen.has(code))issues.push("之前已通过，重复");if(code&&inGroup.has(code))issues.push("本组内重复");if(code)inGroup.add(code);
-    rows.push({nfc,qr,issues});
+    if(nfc===FAIL_NFC)notes.push("NFC 失效");if(qr===FAIL_QR)notes.push("二维码失效");
+    if(nfc&&!isFail(nfc)&&!codeOf(nfc))issues.push("NFC 链接格式不对");if(qr&&!isFail(qr)&&!codeOf(qr))issues.push("二维码链接格式不对");
+    if(nfc&&qr&&!isFail(nfc)&&!isFail(qr)&&nfc!==qr)issues.push("NFC 与二维码不一致");
+    const code=itemCode({nfc,qr});if(code&&seen.has(code))issues.push("之前已通过，重复");if(code&&inGroup.has(code))issues.push("本组内重复");if(code)inGroup.add(code);
+    rows.push({nfc,qr,issues,notes});
   }
   if(nfcs.length!==qrs.length)problems.push(`张数对不上：NFC ${nfcs.length} 张，二维码 ${qrs.length} 张，可能有漏扫`);
-  const reversed=nfcs.length>1&&nfcs.length===qrs.length&&nfcs.every((value,i)=>value===qrs[qrs.length-1-i])&&nfcs.some((value,i)=>value!==qrs[i]);
+  const reversed=nfcs.length>1&&nfcs.length===qrs.length&&nfcs.every((value,i)=>isFail(value)||isFail(qrs[qrs.length-1-i])||value===qrs[qrs.length-1-i])&&nfcs.some((value,i)=>!isFail(value)&&!isFail(qrs[i])&&value!==qrs[i]);
   if(reversed)problems.unshift("这一组头尾放反了：二维码顺序正好是 NFC 倒过来");
   else if(nfcs.length===qrs.length&&nfcs.length>1&&[...nfcs].sort().join()===[...qrs].sort().join()&&nfcs.some((value,i)=>value!==qrs[i]))problems.unshift("这一组顺序被打乱了：是同一批卡，但顺序不同");
   const bad=rows.filter(row=>row.issues.length).length;
@@ -161,7 +184,7 @@ function onNfc(link){
   const t=Date.now();if(link===lastNfc&&t-lastNfcAt<2000){lastNfcAt=t;return}lastNfc=link;lastNfcAt=t;
   if(!state.session||state.check)return;
   if(state.phase!=="nfc"){flashStage("warn");setHint("现在是扫二维码阶段，NFC 没有记录");return}
-  state.current.nfcs.push(link);save();beep(Boolean(codeOf(link)));
+  state.current.nfcs.push(link);save();beep(isFail(link)||Boolean(codeOf(link)));
   if(!isCard()){state.phase="qr";save();render();startCamera();return}
   if(state.current.nfcs.length>=groupTarget()){state.phase="qr";save();render();startCamera();return}
   render();
@@ -169,11 +192,14 @@ function onNfc(link){
 function onQr(link){
   if(!state.session||state.check||state.phase!=="qr")return;
   const t=Date.now();if(link===lastQr&&t-lastQrAt<4000)return;lastQr=link;lastQrAt=t;
-  if(state.current.qrs.includes(link)&&isCard()){flashStage("warn");setHint("这张二维码刚扫过，请换下一张");return}
-  state.current.qrs.push(link);save();beep(Boolean(codeOf(link)));
+  if(!isFail(link)&&state.current.qrs.includes(link)&&isCard()){flashStage("warn");setHint("这张二维码刚扫过，请换下一张");return}
+  state.current.qrs.push(link);save();beep(isFail(link)||Boolean(codeOf(link)));
   if(state.current.qrs.length>=state.current.nfcs.length){stopCamera();finishGroup();return}
   render();
 }
+// NFC / 二维码读不到：占一个位置记为失效，顺序不乱；导入运营台后这张判为“无法识别”（异常待处置）。
+function skipNfc(){if(state.phase!=="nfc"||state.check)return;lastNfc="";onNfc(FAIL_NFC)}
+function skipQr(){if(state.phase!=="qr"||state.check)return;lastQr="";onQr(FAIL_QR)}
 function finishGroup(){
   const result=checkGroup(state.current.nfcs,state.current.qrs);
   if(result.ok){acceptCurrent();return}
@@ -233,26 +259,17 @@ function stopCamera(){scanning=false;if(stream){for(const track of stream.getTra
 async function toggleTorch(){const track=stream?.getVideoTracks()[0];if(!track)return;try{torchOn=!torchOn;await track.applyConstraints({advanced:[{torch:torchOn}]})}catch{showNotice("这台手机不支持网页打开手电筒")}}
 
 // ---------- 导出 ----------
-function csv(links){return "﻿內容\r\n"+links.map(link=>/[",\n]/.test(link)?`"${link.replace(/"/g,'""')}"`:link).join("\r\n")+"\r\n"}
-// 二维码文件按运营台要求：“二维码地址”“扫码时间”两列（运营台按扫码时间排序），时间按通过顺序逐张递增 1 秒，保证顺序与 NFC 文件完全一致。
-function qrCsv(links){
-  const base=Date.now()-links.length*1000,pad=n=>String(n).padStart(2,"0"),fmt=t=>{const d=new Date(t);return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`};
-  const cell=link=>/[",\n]/.test(link)?`"${link.replace(/"/g,'""')}"`:link;
-  return "﻿序号,二维码地址,扫码时间\r\n"+links.map((link,i)=>`${i+1},${cell(link)},${fmt(base+i*1000)}`).join("\r\n")+"\r\n";
-}
-async function exportFiles(legacy=false){
+async function exportFiles(){
   const items=state.groups.flatMap(group=>group.items);
   if(!items.length&&!state.setAside.length){await ask({title:"还没有可导出的",text:"还没有通过核对的记录"});return}
-  const stamp=new Date().toISOString().slice(0,16).replace(/[-:T]/g,"").replace(/^(\d{8})/,"$1-"),name=(state.session.label||"质检").replace(/[\\/:*?"<>|]/g,"-");
-  // 默认只导出一个“质检文件”（NFC、二维码同一行），在运营台任一文件框导入即可同时填好两边；旧的两个文件格式放在“更多”里。
-  let group=0;const rows=state.groups.flatMap(g=>{group++;return g.items.map(item=>[group,item.nfc,item.qr])});
-  const cell=value=>/[",\n]/.test(String(value))?`"${String(value).replace(/"/g,'""')}"`:String(value);
-  const combined="﻿序号,组,NFC链接,二维码链接\r\n"+rows.map((row,i)=>[i+1,...row].map(cell).join(",")).join("\r\n")+"\r\n";
-  const files=legacy
-    ?[new File([qrCsv(items.map(item=>item.qr))],`${name}-二维码-${items.length}张-${stamp}.csv`,{type:"text/csv"}),new File([csv(items.map(item=>item.nfc))],`${name}-NFC-${items.length}张-${stamp}.csv`,{type:"text/csv"})]
-    :[new File([combined],`${name}-质检文件-${items.length}张-${stamp}.csv`,{type:"text/csv"})];
+  const stamp=new Date().toISOString().slice(0,16).replace(/[-:T]/g,"").replace(/^(\d{8})/,"$1-"),s=state.session,name=s.label.replace(/[\\/:*?"<>|]/g,"-");
+  // 一个“质检文件”：每行一张卡，NFC、二维码同一行，按通过顺序；带平台、语言、载体，运营台可直接分到对应载体。失效的那一侧留空。
+  let group=0;const cell=value=>/[",\n]/.test(String(value))?`"${String(value).replace(/"/g,'""')}"`:String(value);
+  const rows=state.groups.flatMap(g=>{group++;return g.items.map(item=>[group,isFail(item.nfc)?"":item.nfc,isFail(item.qr)?"":item.qr,[isFail(item.nfc)?"NFC失效":"",isFail(item.qr)?"二维码失效":""].filter(Boolean).join("、")])});
+  const combined="\ufeff序号,组,NFC链接,二维码链接,问题,平台,语言,载体\r\n"+rows.map((row,i)=>[i+1,...row,s.platform||"Google",s.language||"英文",s.carrier||s.label].map(cell).join(",")).join("\r\n")+"\r\n";
+  const files=[new File([combined],`质检_${name}_${items.length}张_${stamp}.csv`,{type:"text/csv"})];
   const pending=state.setAside.filter(item=>!item.resolved);
-  if(pending.length){const head="﻿时间,张数,原因,NFC,二维码\r\n",body=pending.map(item=>[item.time,item.count,item.reason,item.nfcs.join(" "),item.qrs.join(" ")].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",")).join("\r\n");files.push(new File([head+body+"\r\n"],`${name}-待处理-${pending.length}项-${stamp}.csv`,{type:"text/csv"}))}
+  if(pending.length){const head="\ufeff时间,张数,原因,NFC,二维码\r\n",body=pending.map(item=>[item.time,item.count,item.reason,item.nfcs.join(" "),item.qrs.join(" ")].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",")).join("\r\n");files.push(new File([head+body+"\r\n"],`质检_${name}_待处理${pending.length}项_${stamp}.csv`,{type:"text/csv"}))}
   try{if(navigator.canShare&&navigator.canShare({files})){await navigator.share({files,title:`${name} 质检文件`});markExported();return}}catch(error){if(error.name==="AbortError")return}
   for(const file of files){const a=document.createElement("a");a.href=URL.createObjectURL(file);a.download=file.name;document.body.appendChild(a);a.click();await new Promise(r=>setTimeout(r,400));URL.revokeObjectURL(a.href);a.remove()}
   markExported();
@@ -273,50 +290,58 @@ function render(){
   const c=state.current,qr=state.phase==="qr";
   $("phase").textContent=qr?"扫二维码":"扫 NFC";$("phase").className="phase"+(qr?" qr":"");
   $("startNfc").hidden=Boolean(reader)||qr||Boolean(state.check);
+  const full=Boolean(s.planned&&count>=s.planned);
   // 进度点：本组每一张
-  const total=isCard()?(qr?c.nfcs.length:groupTarget()):1;$("dots").innerHTML=isCard()?Array.from({length:total},(_,i)=>`<span class="${i<c.qrs.length?"q":i<c.nfcs.length?"n":""}">${i+1}</span>`).join(""):"";
+  const total=isCard()?(qr?c.nfcs.length:groupTarget()):1,cols=Math.min(total,10);$("dots").style.setProperty("--cols",cols);
+  $("dots").innerHTML=isCard()?Array.from({length:total},(_,i)=>{const n=c.nfcs[i],q=c.qrs[i];return`<span class="${q!==undefined?(isFail(q)?"f":"q"):n!==undefined?(isFail(n)?"f":"n"):""}">${i+1}</span>`}).join(""):"";
+  const chip=$("groupChip");chip.hidden=!(isCard()&&reader&&!qr&&!state.check);chip.textContent=`本组 ${groupTarget()} 张 · 改`;
   const actions=$("stageActions");actions.innerHTML="";const add=(text,fn,cls)=>{const b=document.createElement("button");b.textContent=text;if(cls)b.className=cls;b.onclick=fn;actions.appendChild(b)};
   $("result").innerHTML="";
   if(state.check){
     const r=state.check;$("title").textContent=r.reversed?"这一组放反了":isCard()?"这一组没有通过":"这一个没有通过";setHint("不计入结果。请按下面的提示处理");
-    $("result").innerHTML=`<div class="notice">${r.problems.map(p=>`• ${p}`).join("<br>")}</div><table><tr><th>#</th><th>NFC</th><th>二维码</th><th>问题</th></tr>${r.rows.map((row,i)=>`<tr class="${row.issues.length?"badrow":""}"><td>${i+1}</td><td class="code">${shortLink(row.nfc)}</td><td class="code">${shortLink(row.qr)}</td><td>${row.issues.join("、")||"✓"}</td></tr>`).join("")}</table>`;
+    $("result").innerHTML=`<div class="notice">${r.problems.map(p=>`• ${p}`).join("<br>")}</div><table><tr><th>#</th><th>NFC</th><th>二维码</th><th>问题</th></tr>${r.rows.map((row,i)=>`<tr class="${row.issues.length?"badrow":""}"><td>${i+1}</td><td class="code">${shortLink(row.nfc)}</td><td class="code">${shortLink(row.qr)}</td><td>${[...row.issues,...row.notes].join("、")||"✓"}</td></tr>`).join("")}</table>`;
     if(c.nfcs.length)add("只重扫二维码",rescanQr,"primary");
     add(isCard()?"整组重扫":"这一个重扫",rescanAll);add(isCard()?"拎出这组":"拎出",()=>setAsideCurrent(r.problems[0]),"danger");
   }else if(qr){
     $("title").textContent=isCard()?`扫二维码 ${c.qrs.length + 1} / ${c.nfcs.length}`:"扫这个立牌的二维码";
     setHint(isCard()?"按刚才 NFC 的顺序，从第一张开始对准相机":"对准立牌上的二维码");
+    add("这张二维码读不到",skipQr);
     if(isCard()&&c.qrs.length)add("撤销上一张",()=>{c.qrs.pop();lastQr="";save();render()});
-    add(isCard()?"拎出这组":"读不到，拎出",()=>setAsideCurrent("二维码读不到"),"danger");
+    add(isCard()?"拎出这组":"拎出这个",()=>setAsideCurrent("二维码读不到"),"danger");
   }else{
-    $("title").textContent=!reader?"点下方按钮开始":isCard()?`扫 NFC ${c.nfcs.length+1} / ${groupTarget()}`:"扫下一个立牌的 NFC";
-    setHint(isCard()?"从头到尾依次贴卡，满一组自动扫二维码":"贴手机背面，读到后会打开相机扫二维码");
-    if(isCard()&&reader)add(`本组 ${groupTarget()} 张 ✎`,editGroupSize);
-    if(isCard()&&c.nfcs.length){add("撤销上一张",()=>{c.nfcs.pop();save();render()});add(`只有 ${c.nfcs.length} 张，扫二维码`,()=>{state.phase="qr";save();render();startCamera()});add("拎出这组",()=>setAsideCurrent("NFC 读不到"),"danger")}
-    else if(!isCard()&&reader)add("读不到，拎出",()=>setAsideCurrent("NFC 读不到"),"danger");
+    // 扫满计划后不再显示“1 / 10”，说明多做的可以继续扫
+    $("title").textContent=!reader?"点下方按钮开始":full&&!c.nfcs.length?`计划 ${s.planned} 张已扫满`:isCard()?`扫 NFC ${c.nfcs.length+1} / ${groupTarget()}`:"扫下一个立牌的 NFC";
+    setHint(full&&!c.nfcs.length?"厂家多做的继续贴卡，会接着计入；没有了就点“导出”":full?`多做的部分 · 已通过 ${count} 张`:isCard()?"从头到尾依次贴卡，满一组自动扫二维码":"贴手机背面，读到后会打开相机扫二维码");
+    if(reader)add("这张 NFC 读不到",skipNfc);
+    if(isCard()&&c.nfcs.length){add("撤销上一张",()=>{c.nfcs.pop();save();render()});add(`只有 ${c.nfcs.length} 张，扫二维码`,()=>{state.phase="qr";save();render();startCamera()});add("拎出这组",()=>setAsideCurrent("这组有问题"),"danger")}
   }
   // 待处理
   const aside=state.setAside;$("setAsideCard").hidden=!aside.length;$("setAsideCount").textContent=`${aside.filter(item=>!item.resolved).length} 项未处理`;
-  $("setAsideList").innerHTML=[...aside].reverse().map(item=>`<div class="item"><div class="body"><div>${item.resolved?'<span class="tag done">已重新通过</span>':'<span class="tag">待处理</span>'}${item.count} 张 · ${item.reason}</div><div class="meta">${item.time} · ${item.codes.slice(0,3).map(code=>code.slice(0,8)).join("、")}${item.codes.length>3?"…":""}</div></div></div>`).join("");
+  $("setAsideList").innerHTML=[...aside].reverse().map((item,index)=>{const codes=item.nfcs.length?item.nfcs:item.qrs;return`<div class="aside${item.resolved?" done":""}"><div class="aside-head">${item.resolved?'<span class="tag done">已重新通过</span>':'<span class="tag">待处理</span>'}<b>${item.reason}</b><span class="aside-count">${item.count} 张</span></div><div class="meta">${item.time}</div><ol class="codes">${codes.map(link=>`<li>${shortLink(link)}</li>`).join("")}</ol>${item.resolved?"":`<button class="small aside-remove" data-index="${aside.length-1-index}">处理好了，移出清单</button>`}</div>`}).join("");
+  document.querySelectorAll(".aside-remove").forEach(button=>button.onclick=async()=>{const item=state.setAside[Number(button.dataset.index)];if(item&&await ask({title:"移出待处理清单",text:`这 ${item.count} 张已经线下处理好（或不要了）？移出后不再导出到待处理清单`})){item.resolved=now();item.reason+="（已手动处理）";save();render()}});
   // 已通过
   $("doneCard").hidden=!state.groups.length;let n=passed();
-  $("doneList").innerHTML=[...state.groups].reverse().slice(0,30).map(group=>{const end=n,start=n-group.items.length+1;n=start-1;return`<div class="item"><div class="body"><div>${start===end?`第 ${end} 张`:`第 ${start}–${end} 张 · ${group.items.length} 张`}</div><div class="meta">${group.time} · ${shortLink(group.items[0].nfc)} … ${shortLink(group.items.at(-1).nfc)}</div></div></div>`}).join("");
+  $("doneList").innerHTML=[...state.groups].reverse().slice(0,30).map(group=>{const end=n,start=n-group.items.length+1;n=start-1;return`<div class="done-group"><div class="done-head"><b>${start===end?`第 ${end} 张`:`第 ${start}–${end} 张`}</b><span>${group.items.length} 张 · ${group.time.slice(-8)}</span></div><ol class="codes" start="${start}">${group.items.map(item=>`<li>${shortLink(isFail(item.nfc)?item.qr:item.nfc)}${isFail(item.nfc)?' <em>NFC 失效</em>':""}${isFail(item.qr)?' <em>二维码失效</em>':""}</li>`).join("")}</ol></div>`}).join("");
   $("undo").disabled=!state.groups.length;$("undo").textContent=isCard()?"撤销上一组":"撤销上一个";
-  $("export").textContent=passed()>state.exportedCount?`导出（${passed()-state.exportedCount} 张未导出）`:"导出";
+  $("export").textContent=passed()>state.exportedCount?`导出（未导 ${passed()-state.exportedCount}）`:"导出";
 }
 
-$("kindCard").onclick=()=>{$("kindCard").className="on";$("kindStand").className="";$("groupField").hidden=false};
-$("kindStand").onclick=()=>{$("kindStand").className="on";$("kindCard").className="";$("groupField").hidden=true};
+function renderPick(){
+  const chips=(id,options,key)=>{$(id).innerHTML=options.map(option=>`<button type="button" class="${pick[key]===option?"on":""}" data-v="${option}">${option}</button>`).join("");$(id).querySelectorAll("button").forEach(button=>button.onclick=()=>{pick[key]=button.dataset.v;renderPick()})};
+  chips("pickPlatform",PLATFORMS,"platform");chips("pickLanguage",LANGUAGES,"language");chips("pickCarrier",CARRIERS,"carrier");
+  const stand=pick.carrier.includes("立牌");$("groupField").hidden=stand;
+  $("picked").innerHTML=`本次：<b>${carrierLabel(pick.platform,pick.language,pick.carrier)}</b>（${stand?"立牌，一个一个扫":"卡片，一组一组扫"}）`;
+}
 $("begin").onclick=()=>{
-  const label=$("label").value.trim();if(!label){$("label").focus();return}
-  const kind=$("kindStand").className==="on"?"stand":"card",groupSize=Math.max(1,Math.floor(Number($("groupSize").value)||10)),planned=Math.floor(Number($("planned").value))||0;
-  state={...fresh(),session:{label,kind,groupSize:kind==="card"?groupSize:1,planned,startedAt:now()}};save();render();startNfc();
+  const kind=pick.carrier.includes("立牌")?"stand":"card",groupSize=Math.max(1,Math.floor(Number($("groupSize").value)||10)),planned=Math.floor(Number($("planned").value))||0;
+  state={...fresh(),session:{label:carrierLabel(pick.platform,pick.language,pick.carrier),platform:pick.platform,language:pick.language,carrier:pick.carrier,kind,groupSize:kind==="card"?groupSize:1,planned,startedAt:now()}};save();render();startNfc();
 };
+$("groupChip").onclick=editGroupSize;
 $("startNfc").onclick=startNfc;
 $("torch").onclick=toggleTorch;$("restartCam").onclick=()=>{stopCamera();startCamera()};
-$("manualAdd").onclick=()=>{const v=$("manual").value.trim();if(!v)return;$("manual").value="";state.phase==="qr"?onQr(v):onNfc(v)};
 $("undo").onclick=async()=>{const last=state.groups.at(-1);if(!last)return;if(await ask({title:"撤销上一组",text:`撤销最后通过的 ${last.items.length} 张？撤销后需要重新扫这一组`}))
   {state.groups.pop();state.fullNotified=false;if(state.exportedCount>passed())state.exportedCount=passed();save();render()}};
-$("export").onclick=()=>exportFiles();$("exportLegacy").onclick=()=>exportFiles(true);
+$("export").onclick=()=>exportFiles();
 // 换载体 / 清空：没导出时可以先导出，也可以不要了直接换（当前数据不一定是想要的）。
 async function leaveSession(title){
   const unexported=passed()-state.exportedCount;
@@ -333,7 +358,7 @@ $("reset").onclick=()=>leaveSession("清空当前内容");
 window.addEventListener("beforeunload",event=>{if(state.session&&(passed()>state.exportedCount||state.current.nfcs.length)){event.preventDefault();event.returnValue=""}});
 document.addEventListener("visibilitychange",async()=>{if(document.visibilityState==="visible"&&(!wake||wake.released)&&reader){try{wake=await navigator.wakeLock?.request("screen")}catch{}}});
 // 刷新后恢复：二维码阶段重新打开相机，NFC 需要点一下按钮重新开启（浏览器要求）
-render();if(state.session&&state.phase==="qr"&&!state.check)startCamera();
+renderPick();render();if(state.session&&state.phase==="qr"&&!state.check)startCamera();
 </script>
 </body>
 </html>
