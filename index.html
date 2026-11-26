@@ -13,7 +13,9 @@ html,body{overscroll-behavior-y:none}
 body{margin:0;background:var(--bg);color:var(--text);font:16px/1.45 system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;-webkit-tap-highlight-color:transparent}
 header{position:sticky;top:0;z-index:5;background:var(--surface);border-bottom:1px solid var(--line);padding:10px 14px}
 .top{display:flex;align-items:center;gap:10px}
-h1{font-size:17px;margin:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.titles{flex:1;min-width:0}
+h1{font-size:18px;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#subheading{display:block;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .progress{font-size:13px;color:var(--muted);text-align:right}.progress b{color:var(--text);font-size:18px}
 .bar{height:6px;background:#e9edf3;border-radius:99px;margin-top:8px;overflow:hidden}.bar i{display:block;height:100%;background:var(--ok);width:0;transition:width .3s}
 main{padding:12px 14px 110px;max-width:640px;margin:0 auto}
@@ -41,7 +43,7 @@ label.field input{display:block;width:100%;height:46px;margin-top:4px;border:1px
 .dots span.n{background:#cddcff;color:var(--primary)}.dots span.q{background:var(--okbg);color:var(--ok)}
 video{width:100%;max-height:44vh;object-fit:cover;border-radius:12px;background:#000;margin-top:12px}
 .camtools{display:flex;gap:8px;margin-top:8px}.camtools button{flex:1}
-.actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}.actions button{flex:1 1 40%}
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}.actions button{height:46px;padding:0 8px;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 table{width:100%;border-collapse:collapse;font-size:13px;margin-top:10px}
 td,th{padding:5px 4px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
 td.code{font-family:ui-monospace,Consolas,monospace;font-size:12px;word-break:break-all}
@@ -63,7 +65,7 @@ dialog .btns{display:flex;gap:8px;margin-top:14px}dialog .btns button{flex:1}
 </head>
 <body>
 <header>
-  <div class="top"><h1 id="heading">NFC 质检扫码</h1><div class="progress" id="progressText"></div><button class="icon" id="reset" title="清空当前内容，重新开始" hidden>⟲</button></div>
+  <div class="top"><div class="titles"><h1 id="heading">NFC 质检扫码</h1><small id="subheading"></small></div><div class="progress" id="progressText"></div><button class="icon" id="reset" title="清空当前内容，重新开始" hidden>⟲</button></div>
   <div class="bar" id="barWrap" hidden><i id="bar"></i></div>
 </header>
 <main>
@@ -263,9 +265,9 @@ function setHint(text){$("hint").textContent=text}
 function render(){
   const has=Boolean(state.session);
   $("setup").hidden=has;$("reset").hidden=!has;$("stage").hidden=!has;$("footer").hidden=!has;$("barWrap").hidden=!has||!state.session?.planned;
-  if(!has){$("heading").textContent="NFC 质检扫码";$("progressText").innerHTML="";return}
+  if(!has){$("heading").textContent="NFC 质检扫码";$("subheading").textContent="";$("progressText").innerHTML="";return}
   const s=state.session,count=passed();
-  $("heading").textContent=`${s.label}（${s.kind==="card"?`卡片 · 默认 ${s.groupSize} 张一组`:"立牌"}）`;
+  $("heading").textContent=s.label;$("subheading").textContent=s.kind==="card"?`卡片 · 默认 ${s.groupSize} 张一组`:"立牌 · 一个一个扫";
   $("progressText").innerHTML=`已通过 <b>${count}</b>${s.planned?` / ${s.planned}`:""} 张`;
   if(s.planned)$("bar").style.width=Math.min(100,count/s.planned*100)+"%";
   const c=state.current,qr=state.phase==="qr";
@@ -279,18 +281,18 @@ function render(){
     const r=state.check;$("title").textContent=r.reversed?"这一组放反了":isCard()?"这一组没有通过":"这一个没有通过";setHint("不计入结果。请按下面的提示处理");
     $("result").innerHTML=`<div class="notice">${r.problems.map(p=>`• ${p}`).join("<br>")}</div><table><tr><th>#</th><th>NFC</th><th>二维码</th><th>问题</th></tr>${r.rows.map((row,i)=>`<tr class="${row.issues.length?"badrow":""}"><td>${i+1}</td><td class="code">${shortLink(row.nfc)}</td><td class="code">${shortLink(row.qr)}</td><td>${row.issues.join("、")||"✓"}</td></tr>`).join("")}</table>`;
     if(c.nfcs.length)add("只重扫二维码",rescanQr,"primary");
-    add(isCard()?"整组重扫":"这一个重扫",rescanAll);add(isCard()?"整组拎出去":"拎出去",()=>setAsideCurrent(r.problems[0]),"danger");
+    add(isCard()?"整组重扫":"这一个重扫",rescanAll);add(isCard()?"拎出这组":"拎出",()=>setAsideCurrent(r.problems[0]),"danger");
   }else if(qr){
     $("title").textContent=isCard()?`扫二维码 ${c.qrs.length + 1} / ${c.nfcs.length}`:"扫这个立牌的二维码";
     setHint(isCard()?"按刚才 NFC 的顺序，从第一张开始对准相机":"对准立牌上的二维码");
-    if(isCard()&&c.qrs.length)add("撤销上一张二维码",()=>{c.qrs.pop();lastQr="";save();render()});
-    add(isCard()?"这组有问题，拎出去":"读不到，拎出去",()=>setAsideCurrent("二维码读不到"),"danger");
+    if(isCard()&&c.qrs.length)add("撤销上一张",()=>{c.qrs.pop();lastQr="";save();render()});
+    add(isCard()?"拎出这组":"读不到，拎出",()=>setAsideCurrent("二维码读不到"),"danger");
   }else{
     $("title").textContent=!reader?"点下方按钮开始":isCard()?`扫 NFC ${c.nfcs.length+1} / ${groupTarget()}`:"扫下一个立牌的 NFC";
-    setHint(isCard()?"把这一组从头到尾依次贴手机背面，满一组自动切到二维码":"贴手机背面，读到后会打开相机扫二维码");
-    if(isCard()&&reader)add(`本组 ${groupTarget()} 张 · 点这里改`,editGroupSize);
-    if(isCard()&&c.nfcs.length){add("撤销上一张 NFC",()=>{c.nfcs.pop();save();render()});add(`这组只有 ${c.nfcs.length} 张，去扫二维码`,()=>{state.phase="qr";save();render();startCamera()},"primary");add("这组有问题，拎出去",()=>setAsideCurrent("NFC 读不到"),"danger")}
-    else if(!isCard()&&reader)add("读不到，拎出去",()=>setAsideCurrent("NFC 读不到"),"danger");
+    setHint(isCard()?"从头到尾依次贴卡，满一组自动扫二维码":"贴手机背面，读到后会打开相机扫二维码");
+    if(isCard()&&reader)add(`本组 ${groupTarget()} 张 ✎`,editGroupSize);
+    if(isCard()&&c.nfcs.length){add("撤销上一张",()=>{c.nfcs.pop();save();render()});add(`只有 ${c.nfcs.length} 张，扫二维码`,()=>{state.phase="qr";save();render();startCamera()});add("拎出这组",()=>setAsideCurrent("NFC 读不到"),"danger")}
+    else if(!isCard()&&reader)add("读不到，拎出",()=>setAsideCurrent("NFC 读不到"),"danger");
   }
   // 待处理
   const aside=state.setAside;$("setAsideCard").hidden=!aside.length;$("setAsideCount").textContent=`${aside.filter(item=>!item.resolved).length} 项未处理`;
